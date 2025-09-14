@@ -52,13 +52,13 @@ A companion plugin for MP4 faststart web optimization with native Tdarr integrat
 1. Get API keys from TMDB, Radarr, and Sonarr
 2. Ensure your media files include database IDs in filenames (TRaSH Guide naming)
 3. Install and configure the plugin with your API keys
-4. **📖 [Complete Setup Guide](plugins/README_Native_Lang.md)**
+4. **📖 [Complete Setup Guide](native_lang/README_Native_Lang.md)**
 
 ### For MP4 Faststart Plugin
 1. Ensure FFmpeg is available in your Tdarr environment
 2. Install the plugin (no API keys required)
 3. Optionally configure size limits
-4. **📖 [Complete Setup Guide](plugins/README_Faststart.md)**
+4. **📖 [Complete Setup Guide](faststart/README_Faststart.md)**
 
 ### Recommended Usage Together
 Use both plugins in sequence for comprehensive media optimization:
