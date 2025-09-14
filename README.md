@@ -57,8 +57,7 @@ A companion plugin for MP4 faststart web optimization with native Tdarr integrat
 ### For MP4 Faststart Plugin
 1. Ensure FFmpeg is available in your Tdarr environment
 2. Install the plugin (no API keys required)
-3. Optionally configure size limits
-4. **📖 [Complete Setup Guide](faststart/README_Faststart.md)**
+3. **📖 [Complete Setup Guide](faststart/README_Faststart.md)**
 
 ### Recommended Usage Together
 Use both plugins in sequence for comprehensive media optimization:
@@ -87,27 +86,3 @@ For issues, suggestions, or contributions:
 - **📖 Plugin-specific documentation**: See individual README files in the `/plugins` directory
 - Check the [original Reddit guide](https://www.reddit.com/r/Tdarr/comments/1cba135/guideplex_optimize_media_for_direct_play_by/) for community discussions
 - Review the [gsariev modifications](https://gist.github.com/gssariev/6a89f81e2cc36c35f002e064261118cc) for technical details
-
-## Repository Structure
-
-```
-├── README.md                           # This overview file
-├── plugin/                             # Legacy location
-│   └── Tdarr_Plugin_recox_MP4_Faststart.js
-├── plugins/                            # Current plugin location
-│   ├── README_Native_Lang.md           # Native language plugin docs
-│   ├── README_Faststart.md             # Faststart plugin docs
-│   ├── Tdarr_Plugin_recox_Keep_Native_Lang_Plus_User_Langs.js
-│   └── Tdarr_Plugin_recox_MP4_Faststart.js
-```
-
-## Version History
-
-### Plugin Collection  
-- **v2.1**: Refactored faststart plugin to use native Tdarr integration
-- **v2.0**: Split documentation, updated faststart detection method
-- **v1.2**: Added MP4 Faststart companion plugin
-
-### Individual Plugin Versions
-- **Native Language Plugin**: v2.0 - Intelligent fallback system
-- **MP4 Faststart Plugin**: v2.0 - Native Tdarr integration with `file.ffProbeData` analysis
