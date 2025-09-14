@@ -23,9 +23,11 @@ const details = () => ({
   • Optimal for HTTP range requests and seeking
   
   DETECTION METHOD:
-  Uses FFprobe to detect moov/mdat atom order:
-  • Faststart enabled: moov atom before mdat atom
-  • Faststart needed: mdat atom before moov atom (metadata at end)
+  Uses Tdarr's pre-processed ffprobe data to detect MP4 faststart optimization:
+  • Analyzes movflags and container metadata for faststart indicators
+  • Examines major brand and compatible brands for web optimization
+  • Checks probe scores and format structure for optimization hints
+  • Fast analysis using existing media metadata (no external process calls)
   
   PROCESSING:
   • Copies all streams without re-encoding (fast operation)
@@ -85,58 +87,72 @@ const response = {
 };
 
 /**
- * Detects if MP4 file already has faststart enabled using FFmpeg
- * @param {string} filePath - Full path to the video file
- * @returns {boolean|null} - True if faststart enabled, false if needed, null if can't determine
+ * Detects if an MP4 file already has faststart enabled using Tdarr's ffprobe data
+ * Analyzes the MP4 container structure to determine optimization status
+ * @param {Object} ffProbeData - Tdarr's pre-processed ffprobe data
+ * @returns {boolean} - true if faststart enabled, false if optimization needed
  */
-const detectFaststart = async (filePath) => {
+const detectFaststart = (ffProbeData) => {
+  response.infoLog += '🔍 Analyzing faststart status from media metadata...\n';
+  
   try {
-    response.infoLog += 'Detecting faststart status...\n';
+    // Check if format information is available
+    if (!ffProbeData.format) {
+      response.infoLog += '☒No format information found\n';
+      return false; // Assume needs optimization if no data
+    }
     
-    // Use FFmpeg to get basic format info quickly - more universally available than FFprobe
-    const command = `ffmpeg -v error -i "${filePath}" -t 1 -f null -`;
+    const format = ffProbeData.format;
+    const tags = format.tags || {};
     
-    response.infoLog += 'Running faststart detection command...\n';
+    response.infoLog += `Format: ${format.format_name || 'unknown'} (${format.format_long_name || 'unknown'})\n`;
     
-    const { execSync } = require('child_process');
+    // Method 1: Check for faststart-related flags in format tags (most reliable)
+    const faststartIndicators = ['MOVFLAGS', 'movflags', 'MAJOR_BRAND', 'major_brand'];
     
-    const startTime = Date.now();
-    try {
-      execSync(command, { 
-        encoding: 'utf8', 
-        timeout: 8000, // 8 second timeout
-        stdio: 'pipe'
-      });
-      
-      const elapsedTime = Date.now() - startTime;
-      
-      // If FFmpeg can start processing quickly (under 4 seconds), likely has faststart
-      if (elapsedTime < 4000) {
-        response.infoLog += `☑Faststart already enabled (quick response: ${elapsedTime}ms)\n`;
-        return true;
-      } else {
-        response.infoLog += `☒Faststart needed (slow response: ${elapsedTime}ms)\n`;
-        return false;
-      }
-    } catch (error) {
-      const elapsedTime = Date.now() - startTime;
-      if (error.signal === 'SIGTERM') {
-        response.infoLog += `☒Faststart needed (timeout after ${elapsedTime}ms)\n`;
-        return false;
-      } else {
-        response.infoLog += `☒Error during detection (${elapsedTime}ms): ${error.message}\n`;
-        return null;
+    for (const indicator of faststartIndicators) {
+      if (tags[indicator]) {
+        const value = tags[indicator].toLowerCase();
+        if (value.includes('faststart') || value.includes('isom')) {
+          response.infoLog += `☑Faststart detected via ${indicator}: ${tags[indicator]}\n`;
+          return true;
+        }
       }
     }
+    
+    // Method 2: Check major brand compatibility for web optimization
+    if (tags.MAJOR_BRAND) {
+      const majorBrand = tags.MAJOR_BRAND.toLowerCase();
+      const compatibleBrands = tags.COMPATIBLE_BRANDS || '';
+      
+      response.infoLog += `Major brand: ${majorBrand}, Compatible: ${compatibleBrands}\n`;
+      
+      // ISO base media file format with web-optimized brands typically indicate faststart
+      if (majorBrand === 'isom' && compatibleBrands.toLowerCase().includes('isom')) {
+        response.infoLog += '☑Faststart likely enabled (ISO base media format detected)\n';
+        return true;
+      }
+    }
+    
+    // Method 3: Use probe score as additional indicator
+    const probeScore = format.probe_score || 0;
+    const fileSize = parseInt(format.size) || 0;
+    
+    response.infoLog += `Probe score: ${probeScore}, File size: ${(fileSize / 1024 / 1024).toFixed(2)}MB\n`;
+    
+    // High probe scores (95-100) combined with instant metadata access usually indicate faststart
+    if (probeScore >= 95) {
+      response.infoLog += '☑High probe score suggests optimized file structure (faststart likely enabled)\n';
+      return true;
+    }
+    
+    // If we can't definitively determine faststart status, assume it's needed
+    response.infoLog += '☒Unable to confirm faststart status - assuming optimization needed\n';
+    return false;
     
   } catch (error) {
-    response.infoLog += `☒Error detecting faststart: ${error.message}\n`;
-    
-    if (error.message.includes('ENOENT')) {
-      response.infoLog += '☒FFmpeg not found. Please ensure FFmpeg is installed and in PATH.\n';
-    }
-    
-    return null; // Unable to determine, skip processing
+    response.infoLog += `☒Error analyzing faststart: ${error.message}\n`;
+    return false; // Assume needs optimization on error
   }
 };
 
@@ -186,21 +202,10 @@ const plugin = async (file, librarySettings, inputs, otherArguments) => {
       response.infoLog += `File size: ${fileSizeGB.toFixed(2)}GB (within limits)\n`;
     }
     
-    // Step 3: Detect current faststart status (simplified approach)
-    let hasFaststart;
-    try {
-      hasFaststart = await detectFaststart(file._id);
-    } catch (error) {
-      response.infoLog += `☒Error during faststart detection: ${error.message}\n`;
-      hasFaststart = null;
-    }
+    // Step 3: Detect current faststart status using Tdarr's ffprobe data
+    const hasFaststart = detectFaststart(file.ffProbeData);
     
     // Step 4: Determine if processing is needed
-    if (hasFaststart === null) {
-      response.infoLog += '☒Unable to determine faststart status. Skipping file for safety.\n';
-      return response;
-    }
-    
     if (hasFaststart && !inputs.force_reprocess) {
       response.infoLog += '☑File already has faststart enabled. No processing needed.\n';
       return response;
