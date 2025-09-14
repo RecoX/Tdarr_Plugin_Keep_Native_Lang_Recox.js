@@ -229,14 +229,16 @@ const processStreams = (result, file, userLangs, isSonarr, includeCommentary, un
   if (!matchFound && tracks.keep.length === 0) {
     response.infoLog += '☒Cancelling plugin because none of the audio tracks match the specified languages or are tagged as undefined. \n';
     response.processFile = false;
-
     // Clear the removal tracks to prevent further deletion
     tracks.remove = [];
   } else {
-    response.processFile = shouldProcess; // Process the file if at least one track is kept or tagged
+    // Only process if there are real changes: at least one audio stream will be removed OR audio metadata will be changed
+    response.processFile = (tracks.remove.length > 0 || (tracks.metadata && tracks.metadata.trim() !== ''));
   }
 
-  if (shouldProcess) {
+  // Strong guard to avoid identical-args loops
+  if (shouldProcess && (tracks.remove.length > 0 || (tracks.metadata && tracks.metadata.trim() !== ''))) {
+    response.container = '.mp4';
     response.preset = `, -map 0:v -c:v copy `;
     for (const index of tracks.keep) {
       response.preset += `-map 0:a:${index} `;
