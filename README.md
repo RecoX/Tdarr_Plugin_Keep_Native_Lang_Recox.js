@@ -23,7 +23,7 @@ A modified Tdarr plugin for keeping native language and user-specified audio tra
 
 ### Current Version by RecoX
 - **Modified by**: RecoX
-- **Repository**: [Tdarr_Plugin_Keep_Native_Lang_Recox.js](https://github.com/RecoX/Tdarr_Plugin_Keep_Native_Lang_Recox.js)
+- **Repository**: [Tdarr_Plugin_recox_Keep_Native_Lang_Plus_User_Langs](https://github.com/RecoX/Tdarr_Plugin_recox_Keep_Native_Lang_Plus_User_Langs)
 - **Key Enhancements**:
   - **Intelligent Fallback System**: When metadata lookup fails, the plugin now falls back to keeping English tracks only
   - **First Track Protection**: If no English tracks are found in fallback mode, keeps the first audio track to prevent silent movies
@@ -82,7 +82,7 @@ commentary: false
 1. Copy the plugin file to your Tdarr Local plugin library
 2. Go to your Tdarr library settings
 3. Select "Local" above the Plugin ID field
-4. Add the plugin ID: `Tdarr_Plugin_henk_Keep_Native_Lang_Plus_Eng`
+4. Add the plugin ID: `Tdarr_Plugin_recox_Keep_Native_Lang_Plus_User_Langs`
 5. Configure all required API keys and URLs
 6. Set your preferred user languages and options
 7. Save and sync plugins
