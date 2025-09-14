@@ -2,18 +2,33 @@
 module.exports.dependencies = ['axios@0.27.2', '@cospired/i18n-iso-languages'];
 
 const details = () => ({
-  id: 'Tdarr_Plugin_henk_Keep_Native_Lang_Plus_Eng',
+  id: 'Tdarr_Plugin_recox_Keep_Native_Lang_Plus_User_Langs',
   Stage: 'Pre-processing',
-  Name: 'Remove all langs except native and English',
+  Name: 'Keep Native Language + User Languages with Fallback',
   Type: 'Audio',
   Operation: 'Transcode',
-  Description: `This is a modified version made by recox based on gsariev's work on the original plugin. This plugin will remove all language audio tracks except the 'native' and user-specified languages.
-     (requires TMDB api key).
-    'Native' languages are the ones that are listed on TMDB. It does an API call to 
-    Radarr, Sonarr to check if the movie/series exists and grabs the IMDb id. As a last resort, it 
-    falls back to the IMDb id in the filename.`,
-  Version: '1.2',
-  Tags: 'pre-processing,configurable',
+  Description: `Enhanced audio language management plugin by RecoX, based on gsariev's modifications of henk's original work.
+  
+  FEATURES:
+  • Intelligently removes unwanted audio tracks while preserving native and user-specified languages
+  • Uses TMDB API to identify original/native language from movie/TV metadata
+  • Integrates with Radarr/Sonarr for robust media identification
+  • Fallback system prevents silent movies when metadata lookup fails
+  • Commentary track management (remove/keep based on preference)
+  • Supports multiple language codes and mapping between services
+  
+  FALLBACK BEHAVIOR:
+  When TMDB/Radarr/Sonarr lookup fails:
+  1. Attempts to keep English audio tracks only
+  2. If no English found, keeps first audio track as safety measure
+  3. Ensures no media files are completely skipped due to missing metadata
+  
+  REQUIREMENTS:
+  • TMDB API key (v3)
+  • Radarr and/or Sonarr with API access
+  • Media files with IMDb/TMDB/TVDB IDs in filename (recommended)`,
+  Version: '2.0',
+  Tags: 'pre-processing,configurable,audio,language,fallback',
   Inputs: [
     {
       name: 'user_langs',
@@ -23,10 +38,11 @@ const details = () => ({
         type: 'text',
       },
       tooltip:
-        'Input a comma-separated list of ISO-639-2 languages. It will still keep English and undefined tracks.'
-        + '(https://en.wikipedia.org/wiki/List_of_ISO_639-2_codes 639-2 column)'
-        + '\\nExample:\\n'
-        + 'ger,fre',
+        'Comma-separated list of ISO-639-2 language codes to keep alongside the native language.'
+        + ' Leave empty to keep only the native language detected from TMDB.'
+        + ' (Reference: https://en.wikipedia.org/wiki/List_of_ISO_639-2_codes)'
+        + '\\nExample: ger,fre,spa,ita'
+        + '\\nNote: In fallback mode (no metadata), English will be kept regardless of this setting.',
     },
     {
       name: 'priority',
@@ -36,9 +52,10 @@ const details = () => ({
         type: 'text',
       },
       tooltip:
-        'Priority for either Radarr or Sonarr. Leaving it empty defaults to Radarr first.'
-        + '\\nExample:\\n'
-        + 'sonarr',
+        'Service priority for media identification. Determines which service to query first for metadata.'
+        + '\\nOptions: "radarr" (movies first) or "sonarr" (TV shows first)'
+        + '\\nDefault: radarr'
+        + '\\nRecommendation: Use "radarr" for movie libraries, "sonarr" for TV libraries.',
     },
     {
       name: 'api_key',
@@ -48,7 +65,9 @@ const details = () => ({
         type: 'text',
       },
       tooltip:
-        'Input your TMDB api (v3) key here. (https://www.themoviedb.org/)',
+        'Your TMDB API (v3) key - REQUIRED for native language detection.'
+        + '\\nGet your free API key at: https://www.themoviedb.org/'
+        + '\\nWithout this key, plugin will fall back to English-only mode.',
     },
     {
       name: 'radarr_api_key',
@@ -103,25 +122,32 @@ const details = () => ({
           'true',
         ],
       },
-      tooltip: `Specify if audio tracks that contain commentary/description should be removed.
-               \\nExample:\\n
-               true
-
-               \\nExample:\\n
-               false`,
+      tooltip: `Commentary and description track handling.
+               \\nOptions:
+               \\n• false (default): Keep commentary tracks
+               \\n• true: Remove tracks with titles containing "commentary", "description", or "sdh"
+               \\n
+               \\nRecommended: true (removes commentary tracks for cleaner audio selection)`,
     },
   ],
 });
 
+// Plugin response object - contains all output data for Tdarr
 const response = {
-  processFile: false,
-  preset: ', -map 0 ',
-  container: '.',
-  handBrakeMode: false,
-  FFmpegMode: true,
-  reQueueAfter: false,
-  infoLog: '',
+  processFile: false,        // Whether Tdarr should process the file
+  preset: ', -map 0 ',       // FFmpeg command preset
+  container: '.',            // Output container format
+  handBrakeMode: false,      // Use HandBrake instead of FFmpeg
+  FFmpegMode: true,          // Use FFmpeg for processing
+  reQueueAfter: false,       // Re-queue file after processing
+  infoLog: '',              // Detailed log information shown to user
 };
+
+/**
+ * Converts TMDB 2-letter language codes to ISO-639-2 3-letter format
+ * @param {string} tmdbLanguageCode - 2-letter language code from TMDB (e.g., 'en', 'fr')
+ * @returns {string|null} - 3-letter ISO-639-2 code (e.g., 'eng', 'fre') or null if conversion fails
+ */
 
 const languageConverter = (tmdbLanguageCode) => {
   const isoLang = require('@cospired/i18n-iso-languages');
@@ -141,6 +167,13 @@ const languageConverter = (tmdbLanguageCode) => {
   }
 };
 
+/**
+ * Parses API response from Radarr or Sonarr
+ * @param {Object} body - API response body
+ * @param {string} filePath - File path for context
+ * @param {string} arr - Service type ('radarr' or 'sonarr')
+ * @returns {Object} - Parsed movie or series object
+ */
 const parseArrResponse = (body, filePath, arr) => {
   // eslint-disable-next-line default-case
   switch (arr) {
@@ -151,6 +184,15 @@ const parseArrResponse = (body, filePath, arr) => {
   }
 };
 
+/**
+ * Main stream processing function - analyzes audio tracks and determines which to keep/remove
+ * @param {Object} result - TMDB result containing original_language
+ * @param {Object} file - Tdarr file object with ffProbeData
+ * @param {Array} userLangs - User-specified language codes to keep
+ * @param {boolean} isSonarr - Whether this is processing a Sonarr result
+ * @param {boolean} includeCommentary - Whether to remove commentary tracks
+ * @returns {Object} - Object containing keep/remove track arrays and removed language names
+ */
 const processStreams = (result, file, userLangs, isSonarr, includeCommentary) => {
   const languages = require('@cospired/i18n-iso-languages');
   const tracks = {
@@ -166,11 +208,12 @@ const processStreams = (result, file, userLangs, isSonarr, includeCommentary) =>
 
   response.infoLog += `Original language tag: ${convertedLanguageCode}\n`;
 
-  // Add the original language to the list of languages to keep
+  // Initialize tracking: assume we'll keep the native language track
+  // Note: This is optimistic - we'll verify actual matches during stream analysis
   tracks.keep.push(streamIndex);
   response.infoLog += `Keeping the original language audio track: ${languages.getName(result.original_language, 'en')}\n`;
 
-  // Flag to indicate if any audio track matches the specified languages
+  // Flag to track if we actually find matching audio streams
   let matchFound = false;
 
   for (const stream of file.ffProbeData.streams) {
@@ -254,6 +297,13 @@ const mapSonarrLanguageToTMDB = (sonarrLanguage) => {
   return languageMappings[sonarrLanguage] || sonarrLanguage;
 };
 
+/**
+ * Queries TMDB API using IMDb ID to get movie/TV show metadata including original language
+ * @param {string} filename - Filename or IMDb ID to search for
+ * @param {string} api_key - TMDB API key
+ * @param {Object} axios - Axios HTTP client instance
+ * @returns {Object|null} - TMDB result object or null if not found
+ */
 const tmdbApi = async (filename, api_key, axios) => {
   let fileName;
 
@@ -307,12 +357,26 @@ const tmdbApi = async (filename, api_key, axios) => {
   return null;
 };
 
+/**
+ * Identifies commentary tracks by analyzing track titles for specific keywords
+ * @param {string} title - Audio track title to analyze
+ * @returns {boolean} - True if track appears to be commentary/description
+ */
 const isCommentaryTrack = (title) => {
   // Check if the title includes keywords indicating a commentary track
   return title.toLowerCase().includes('commentary')
     || title.toLowerCase().includes('description')
     || title.toLowerCase().includes('sdh');
 };
+
+/**
+ * Main plugin function - orchestrates the entire audio track processing workflow
+ * @param {Object} file - Tdarr file object containing media information
+ * @param {Object} librarySettings - Tdarr library configuration
+ * @param {Object} inputs - User-provided plugin configuration
+ * @param {Object} otherArguments - Additional Tdarr arguments
+ * @returns {Object} - Plugin response object with processing results
+ */
 
 const plugin = async (file, librarySettings, inputs, otherArguments) => {
   const lib = require('../methods/lib')();
