@@ -6,15 +6,15 @@ A collection of modified Tdarr plugins for comprehensive media optimization with
 
 ### 1. Tdarr_Plugin_recox_Keep_Native_Lang_Plus_User_Langs
 A modified plugin for keeping native language and user-specified audio tracks with intelligent fallback handling.
-- **📖 [Detailed Documentation](plugins/README_Native_Lang.md)**
+- **📖 [Detailed Documentation](native_lang/README_Native_Lang.md)**
 - **🔧 Configuration**: Requires TMDB, Radarr, and Sonarr API keys
 - **🎯 Purpose**: Intelligent audio track management with native language detection
 
 ### 2. Tdarr_Plugin_recox_MP4_Faststart  
-A companion plugin for MP4 faststart web optimization with intelligent detection.
-- **📖 [Detailed Documentation](plugins/README_Faststart.md)**
+A companion plugin for MP4 faststart web optimization with native Tdarr integration.
+- **📖 [Detailed Documentation](faststart/README_Faststart.md)**
 - **🔧 Configuration**: Optional size limits and force processing
-- **🎯 Purpose**: Web streaming optimization with timing-based detection
+- **🎯 Purpose**: Web streaming optimization using Tdarr's built-in metadata
 
 ---
 
@@ -103,10 +103,11 @@ For issues, suggestions, or contributions:
 
 ## Version History
 
-### Plugin Collection
+### Plugin Collection  
+- **v2.1**: Refactored faststart plugin to use native Tdarr integration
 - **v2.0**: Split documentation, updated faststart detection method
 - **v1.2**: Added MP4 Faststart companion plugin
 
 ### Individual Plugin Versions
 - **Native Language Plugin**: v2.0 - Intelligent fallback system
-- **MP4 Faststart Plugin**: v1.1 - Timing-based detection method
+- **MP4 Faststart Plugin**: v2.0 - Native Tdarr integration with `file.ffProbeData` analysis
