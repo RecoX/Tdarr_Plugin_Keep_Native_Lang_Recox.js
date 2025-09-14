@@ -85,7 +85,7 @@ const response = {
 };
 
 /**
- * Detects if MP4 file already has faststart enabled using FFprobe
+ * Detects if MP4 file already has faststart enabled using FFmpeg
  * @param {string} filePath - Full path to the video file
  * @returns {boolean|null} - True if faststart enabled, false if needed, null if can't determine
  */
@@ -93,9 +93,8 @@ const detectFaststart = async (filePath) => {
   try {
     response.infoLog += 'Detecting faststart status...\n';
     
-    // Simple approach: Use FFprobe to get basic format info quickly
-    // Files with faststart will respond much faster than those without
-    const command = `ffprobe -v error -show_entries format=duration -of csv=p=0 "${filePath}"`;
+    // Use FFmpeg to get basic format info quickly - more universally available than FFprobe
+    const command = `ffmpeg -v error -i "${filePath}" -t 1 -f null -`;
     
     response.infoLog += 'Running faststart detection command...\n';
     
@@ -103,7 +102,7 @@ const detectFaststart = async (filePath) => {
     
     const startTime = Date.now();
     try {
-      const output = execSync(command, { 
+      execSync(command, { 
         encoding: 'utf8', 
         timeout: 8000, // 8 second timeout
         stdio: 'pipe'
@@ -111,8 +110,8 @@ const detectFaststart = async (filePath) => {
       
       const elapsedTime = Date.now() - startTime;
       
-      // If we got duration quickly (under 3 seconds), likely has faststart
-      if (elapsedTime < 3000 && output.trim() !== '') {
+      // If FFmpeg can start processing quickly (under 4 seconds), likely has faststart
+      if (elapsedTime < 4000) {
         response.infoLog += `☑Faststart already enabled (quick response: ${elapsedTime}ms)\n`;
         return true;
       } else {
@@ -134,7 +133,7 @@ const detectFaststart = async (filePath) => {
     response.infoLog += `☒Error detecting faststart: ${error.message}\n`;
     
     if (error.message.includes('ENOENT')) {
-      response.infoLog += '☒FFprobe not found. Please ensure FFmpeg is installed and in PATH.\n';
+      response.infoLog += '☒FFmpeg not found. Please ensure FFmpeg is installed and in PATH.\n';
     }
     
     return null; // Unable to determine, skip processing
