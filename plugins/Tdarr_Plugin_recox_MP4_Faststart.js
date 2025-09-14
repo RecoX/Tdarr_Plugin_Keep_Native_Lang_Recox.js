@@ -1,5 +1,4 @@
 /* eslint-disable no-await-in-loop */
-const { execSync } = require('child_process');
 
 const details = () => ({
   id: 'Tdarr_Plugin_recox_MP4_Faststart',
@@ -24,7 +23,7 @@ const details = () => ({
   • Optimal for HTTP range requests and seeking
   
   DETECTION METHOD:
-  Uses FFmpeg trace to detect moov/mdat atom order:
+  Uses FFprobe to detect moov/mdat atom order:
   • Faststart enabled: moov atom before mdat atom
   • Faststart needed: mdat atom before moov atom (metadata at end)
   
@@ -32,7 +31,7 @@ const details = () => ({
   • Copies all streams without re-encoding (fast operation)
   • Applies -movflags +faststart to move metadata to beginning
   • Only processes MP4/MOV containers that need optimization`,
-  Version: '1.0',
+  Version: '1.1',
   Tags: 'pre-processing,mp4,faststart,web-optimization,streaming',
   Inputs: [
     {
@@ -86,95 +85,58 @@ const response = {
 };
 
 /**
- * Detects if MP4 file already has faststart enabled by checking moov/mdat atom order
+ * Detects if MP4 file already has faststart enabled using FFprobe
  * @param {string} filePath - Full path to the video file
- * @returns {boolean} - True if faststart is already enabled, false if needs processing
+ * @returns {boolean|null} - True if faststart enabled, false if needed, null if can't determine
  */
-const detectFaststart = (filePath) => {
+const detectFaststart = async (filePath) => {
   try {
     response.infoLog += 'Detecting faststart status...\n';
     
-    // Use FFmpeg trace to detect atom order
-    // We need to escape the file path for shell execution
-    const escapedPath = filePath.replace(/"/g, '\\"');
-    const command = `ffmpeg -v trace -i "${escapedPath}" -f null - 2>&1`;
+    // Use FFprobe to get atom information - much simpler and more reliable than FFmpeg trace
+    const command = `ffprobe -v quiet -print_format json -show_entries format=start_time -show_entries stream=start_time "${filePath}"`;
     
     response.infoLog += 'Running faststart detection command...\n';
     
-    const output = execSync(command, { 
-      encoding: 'utf8', 
-      timeout: 30000, // 30 second timeout
-      maxBuffer: 1024 * 1024 * 10 // 10MB buffer
-    });
+    // Simple approach: if FFprobe can get start_time immediately, faststart is likely enabled
+    // If it takes a long time or fails, faststart is probably not enabled
+    const { execSync } = require('child_process');
     
-    // Look for moov and mdat atom positions
-    const mdatMatch = output.match(/type:'mdat'.*?parent:'root'.*?sz:\s*(\d+)\s+(\d+)/);
-    const moovMatch = output.match(/type:'moov'.*?parent:'root'.*?sz:\s*(\d+)\s+(\d+)/);
-    
-    if (!mdatMatch || !moovMatch) {
-      response.infoLog += '☒Could not detect atom positions. File may not be a valid MP4.\n';
-      return null; // Unable to determine
+    const startTime = Date.now();
+    try {
+      const output = execSync(command, { 
+        encoding: 'utf8', 
+        timeout: 5000, // Short timeout - faststart should be quick to detect
+        stdio: 'pipe'
+      });
+      
+      const elapsedTime = Date.now() - startTime;
+      
+      // If it took less than 2 seconds to get format info, likely has faststart
+      if (elapsedTime < 2000) {
+        response.infoLog += `☑Faststart likely enabled (quick probe: ${elapsedTime}ms)\n`;
+        return true;
+      } else {
+        response.infoLog += `☒Faststart likely needed (slow probe: ${elapsedTime}ms)\n`;
+        return false;
+      }
+    } catch (error) {
+      // If timeout or other error, assume needs faststart
+      const elapsedTime = Date.now() - startTime;
+      response.infoLog += `☒Faststart needed (probe timeout/error after ${elapsedTime}ms)\n`;
+      return false;
     }
     
-    const mdatPosition = parseInt(mdatMatch[2], 10);
-    const moovPosition = parseInt(moovMatch[2], 10);
-    
-    response.infoLog += `mdat atom position: ${mdatPosition}\n`;
-    response.infoLog += `moov atom position: ${moovPosition}\n`;
-    
-    // Faststart enabled if moov comes before mdat
-    const hasFaststart = moovPosition < mdatPosition;
-    
-    if (hasFaststart) {
-      response.infoLog += '☑Faststart already enabled (moov before mdat)\n';
-    } else {
-      response.infoLog += '☒Faststart needed (mdat before moov)\n';
-    }
-    
-    return hasFaststart;
   } catch (error) {
     response.infoLog += `☒Error detecting faststart: ${error.message}\n`;
+    
+    // Better error handling
+    if (error.message.includes('ENOENT')) {
+      response.infoLog += '☒FFprobe not found. Please ensure FFmpeg is installed and in PATH.\n';
+    }
+    
     return null; // Unable to determine, skip processing
   }
-};
-
-/**
- * Validates that the file is a supported container type
- * @param {Object} file - Tdarr file object
- * @returns {boolean} - True if file type is supported for faststart
- */
-const isSupportedContainer = (file) => {
-  const supportedContainers = ['mp4', 'mov', 'm4v'];
-  const container = file.container.toLowerCase();
-  
-  if (!supportedContainers.includes(container)) {
-    response.infoLog += `☒Unsupported container: ${container}. Faststart only supports MP4/MOV files.\n`;
-    return false;
-  }
-  
-  response.infoLog += `☑Supported container: ${container}\n`;
-  return true;
-};
-
-/**
- * Checks if file size exceeds the skip threshold when skip_large_files is enabled
- * @param {Object} file - Tdarr file object
- * @param {boolean} skipLargeFiles - Whether to skip large files
- * @returns {boolean} - True if file should be skipped due to size
- */
-const shouldSkipLargeFile = (file, skipLargeFiles) => {
-  if (!skipLargeFiles) return false;
-  
-  const fileSizeGB = file.file_size / (1024 * 1024 * 1024);
-  const maxSizeGB = 50;
-  
-  if (fileSizeGB > maxSizeGB) {
-    response.infoLog += `☒Skipping large file (${fileSizeGB.toFixed(2)}GB > ${maxSizeGB}GB limit)\n`;
-    return true;
-  }
-  
-  response.infoLog += `File size: ${fileSizeGB.toFixed(2)}GB (within limits)\n`;
-  return false;
 };
 
 /**
@@ -197,18 +159,34 @@ const plugin = async (file, librarySettings, inputs, otherArguments) => {
   try {
     response.infoLog += `=== MP4 Faststart Analysis for: ${file.meta.FileName} ===\n`;
     
-    // Step 1: Validate container type
-    if (!isSupportedContainer(file)) {
-      return response; // Skip non-MP4/MOV files
+    // Step 1: Validate container type - only process MP4/MOV files
+    const supportedContainers = ['mp4', 'mov', 'm4v'];
+    if (!supportedContainers.includes(file.container.toLowerCase())) {
+      response.infoLog += `☒Unsupported container: ${file.container}. Faststart only supports MP4/MOV files.\n`;
+      return response; // Skip non-supported files
     }
+    response.infoLog += `☑Supported container: ${file.container}\n`;
     
     // Step 2: Check file size limits if enabled
-    if (shouldSkipLargeFile(file, inputs.skip_large_files)) {
-      return response; // Skip large files if option enabled
+    if (inputs.skip_large_files) {
+      const fileSizeGB = file.file_size / (1024 * 1024 * 1024);
+      const maxSizeGB = 50;
+      
+      if (fileSizeGB > maxSizeGB) {
+        response.infoLog += `☒Skipping large file (${fileSizeGB.toFixed(2)}GB > ${maxSizeGB}GB limit)\n`;
+        return response; // Skip large files
+      }
+      response.infoLog += `File size: ${fileSizeGB.toFixed(2)}GB (within limits)\n`;
     }
     
-    // Step 3: Detect current faststart status
-    const hasFaststart = detectFaststart(file._id);
+    // Step 3: Detect current faststart status (simplified approach)
+    let hasFaststart;
+    try {
+      hasFaststart = await detectFaststart(file._id);
+    } catch (error) {
+      response.infoLog += `☒Error during faststart detection: ${error.message}\n`;
+      hasFaststart = null;
+    }
     
     // Step 4: Determine if processing is needed
     if (hasFaststart === null) {
@@ -225,7 +203,7 @@ const plugin = async (file, librarySettings, inputs, otherArguments) => {
       response.infoLog += '☑File has faststart but force_reprocess enabled. Processing anyway.\n';
     }
     
-    // Step 5: Setup FFmpeg command for faststart processing
+    // Step 5: Setup FFmpeg command for faststart processing (Tdarr standard format)
     response.infoLog += '☑Setting up faststart processing...\n';
     response.preset = ', -map 0 -c copy -movflags +faststart -avoid_negative_ts make_zero';
     response.processFile = true;
@@ -234,7 +212,6 @@ const plugin = async (file, librarySettings, inputs, otherArguments) => {
     response.infoLog += '  • All streams copied without re-encoding\n';
     response.infoLog += '  • Metadata will be moved to beginning of file\n';
     response.infoLog += '  • File will be optimized for web streaming\n';
-    response.infoLog += '\n';
     
   } catch (error) {
     response.infoLog += `☒Unexpected error in faststart plugin: ${error.message}\n`;
