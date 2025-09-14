@@ -93,44 +93,46 @@ const detectFaststart = async (filePath) => {
   try {
     response.infoLog += 'Detecting faststart status...\n';
     
-    // Use FFprobe to get atom information - much simpler and more reliable than FFmpeg trace
-    const command = `ffprobe -v quiet -print_format json -show_entries format=start_time -show_entries stream=start_time "${filePath}"`;
+    // Simple approach: Use FFprobe to get basic format info quickly
+    // Files with faststart will respond much faster than those without
+    const command = `ffprobe -v error -show_entries format=duration -of csv=p=0 "${filePath}"`;
     
     response.infoLog += 'Running faststart detection command...\n';
     
-    // Simple approach: if FFprobe can get start_time immediately, faststart is likely enabled
-    // If it takes a long time or fails, faststart is probably not enabled
     const { execSync } = require('child_process');
     
     const startTime = Date.now();
     try {
       const output = execSync(command, { 
         encoding: 'utf8', 
-        timeout: 5000, // Short timeout - faststart should be quick to detect
+        timeout: 8000, // 8 second timeout
         stdio: 'pipe'
       });
       
       const elapsedTime = Date.now() - startTime;
       
-      // If it took less than 2 seconds to get format info, likely has faststart
-      if (elapsedTime < 2000) {
-        response.infoLog += `☑Faststart likely enabled (quick probe: ${elapsedTime}ms)\n`;
+      // If we got duration quickly (under 3 seconds), likely has faststart
+      if (elapsedTime < 3000 && output.trim() !== '') {
+        response.infoLog += `☑Faststart already enabled (quick response: ${elapsedTime}ms)\n`;
         return true;
       } else {
-        response.infoLog += `☒Faststart likely needed (slow probe: ${elapsedTime}ms)\n`;
+        response.infoLog += `☒Faststart needed (slow response: ${elapsedTime}ms)\n`;
         return false;
       }
     } catch (error) {
-      // If timeout or other error, assume needs faststart
       const elapsedTime = Date.now() - startTime;
-      response.infoLog += `☒Faststart needed (probe timeout/error after ${elapsedTime}ms)\n`;
-      return false;
+      if (error.signal === 'SIGTERM') {
+        response.infoLog += `☒Faststart needed (timeout after ${elapsedTime}ms)\n`;
+        return false;
+      } else {
+        response.infoLog += `☒Error during detection (${elapsedTime}ms): ${error.message}\n`;
+        return null;
+      }
     }
     
   } catch (error) {
     response.infoLog += `☒Error detecting faststart: ${error.message}\n`;
     
-    // Better error handling
     if (error.message.includes('ENOENT')) {
       response.infoLog += '☒FFprobe not found. Please ensure FFmpeg is installed and in PATH.\n';
     }
@@ -158,6 +160,12 @@ const plugin = async (file, librarySettings, inputs, otherArguments) => {
   
   try {
     response.infoLog += `=== MP4 Faststart Analysis for: ${file.meta.FileName} ===\n`;
+    
+    // Step 0: Skip if this is already a Tdarr cache file (likely already processed)
+    if (file._id.includes('-TdarrCacheFile-')) {
+      response.infoLog += '☑File is already a Tdarr cache file, likely already processed. Skipping.\n';
+      return response;
+    }
     
     // Step 1: Validate container type - only process MP4/MOV files
     const supportedContainers = ['mp4', 'mov', 'm4v'];
