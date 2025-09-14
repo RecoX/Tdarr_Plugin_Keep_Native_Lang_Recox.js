@@ -1,0 +1,1 @@
+# Tdarr_Plugin_Keep_Native_Lang_Recox.js
