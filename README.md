@@ -1,4 +1,4 @@
-# Tdarr_Plugin_Keep_Native_Lang_Recox.js
+# Tdarr_Plugin_recox_Keep_Native_Lang_Plus_User_Langs
 
 A modified Tdarr plugin for keeping native language and user-specified audio tracks with intelligent fallback handling.
 
@@ -188,4 +188,5 @@ For issues, suggestions, or contributions:
 
 - **v1.0**: Original henk plugin - Basic native + English language support
 - **v1.2**: gsariev modifications - User language support, better API integration
+
 - **v2.0**: RecoX enhancements - Intelligent fallback system, first track protection
