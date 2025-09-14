@@ -9,8 +9,8 @@ const details = () => ({
   Operation: 'Transcode',
   Description: `This is a modified version made by gsariev of the original plugin. This plugin will remove all language audio tracks except the 'native' and user-specified languages.
      (requires TMDB api key).
-    'Native' languages are the ones that are listed on TMDB. It does an API call to 
-    Radarr, Sonarr to check if the movie/series exists and grabs the IMDb id. As a last resort, it 
+    'Native' languages are the ones that are listed on TMDB. It does an API call to
+    Radarr, Sonarr to check if the movie/series exists and grabs the IMDb id. As a last resort, it
     falls back to the IMDb id in the filename.`,
   Version: '1.3', // Incremented version
   Tags: 'pre-processing,configurable',
@@ -208,7 +208,7 @@ const processStreams = (result, file, userLangs, isSonarr, includeCommentary, un
       } else if (stream.tags.language) {
         // Check if the language is in the user-defined languages or it's the original language
         const mappedLanguage = isSonarr ? mapSonarrLanguageToTMDB(stream.tags.language) : mapRadarrLanguageToTMDB(stream.tags.language);
-        
+
         if (userLangs.includes(mappedLanguage) || mappedLanguage === convertedLanguageCode) {
           tracks.keep.push(streamIndex);
           response.infoLog += `☑Keeping audio track with language: ${languages.getName(stream.tags.language, 'en')}\n`;
@@ -229,16 +229,14 @@ const processStreams = (result, file, userLangs, isSonarr, includeCommentary, un
   if (!matchFound && tracks.keep.length === 0) {
     response.infoLog += '☒Cancelling plugin because none of the audio tracks match the specified languages or are tagged as undefined. \n';
     response.processFile = false;
+
     // Clear the removal tracks to prevent further deletion
     tracks.remove = [];
   } else {
-    // Only process if there are real changes: at least one audio stream will be removed OR audio metadata will be changed
-    response.processFile = (tracks.remove.length > 0 || (tracks.metadata && tracks.metadata.trim() !== ''));
+    response.processFile = shouldProcess; // Process the file if at least one track is kept or tagged
   }
 
-  // Strong guard to avoid identical-args loops
-  if (shouldProcess && (tracks.remove.length > 0 || (tracks.metadata && tracks.metadata.trim() !== ''))) {
-    response.container = '.mp4';
+  if (shouldProcess) {
     response.preset = `, -map 0:v -c:v copy `;
     for (const index of tracks.keep) {
       response.preset += `-map 0:a:${index} `;
