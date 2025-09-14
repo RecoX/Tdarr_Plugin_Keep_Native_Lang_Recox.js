@@ -1,6 +1,14 @@
-# Tdarr_Plugin_recox_Keep_Native_Lang_Plus_User_Langs
+# Tdarr Plugin Collection by RecoX
 
-A modified Tdarr plugin for keeping native language and user-specified audio tracks with intelligent fallback handling.
+A collection of modified Tdarr plugins for comprehensive media optimization with intelligent handling.
+
+## Plugins in This Repository
+
+### 1. Tdarr_Plugin_recox_Keep_Native_Lang_Plus_User_Langs
+A modified plugin for keeping native language and user-specified audio tracks with intelligent fallback handling.
+
+### 2. Tdarr_Plugin_recox_MP4_Faststart  
+A companion plugin for MP4 faststart web optimization with intelligent detection.
 
 ---
 
@@ -188,5 +196,109 @@ For issues, suggestions, or contributions:
 
 - **v1.0**: Original henk plugin - Basic native + English language support
 - **v1.2**: gsariev modifications - User language support, better API integration
-
 - **v2.0**: RecoX enhancements - Intelligent fallback system, first track protection
+
+---
+
+# Tdarr_Plugin_recox_MP4_Faststart
+
+A companion plugin for MP4 faststart web optimization with intelligent detection and processing.
+
+## Overview
+
+This plugin optimizes MP4 files for web streaming by moving metadata (moov atom) to the beginning of the file, enabling instant playback start without waiting for the entire file to download.
+
+## Features
+
+### Intelligent Detection
+- **Automatic Faststart Detection**: Uses FFmpeg trace to detect if files already have faststart enabled
+- **Skip Optimized Files**: Only processes files that actually need faststart optimization
+- **Atom Position Analysis**: Analyzes moov/mdat atom order to determine current status
+- **Container Validation**: Automatically skips non-MP4/MOV files
+
+### Processing Options
+- **Stream Preservation**: Copies all video, audio, and subtitle streams without re-encoding
+- **Large File Handling**: Optional skip for files over 50GB to avoid long processing times  
+- **Force Reprocessing**: Option to reprocess files even if faststart appears enabled
+- **Detailed Logging**: Comprehensive status reporting for each file processed
+
+### Performance Benefits
+- **Faster Streaming**: Instant playback start for web streaming
+- **Better Plex/Jellyfin Performance**: Optimal progressive download behavior
+- **Mobile Optimization**: Improved streaming experience on mobile devices
+- **HTTP Range Support**: Better seeking and partial content delivery
+
+## Configuration
+
+### Input Parameters
+- **skip_large_files**: Skip files over 50GB (default: false)
+- **force_reprocess**: Reprocess all files regardless of current status (default: false)
+
+### Example Configuration
+```
+skip_large_files: false
+force_reprocess: false
+```
+
+## Installation
+
+1. Copy the plugin file `Tdarr_Plugin_recox_MP4_Faststart.js` to your Tdarr Local plugin library
+2. Go to your Tdarr library settings  
+3. Select "Local" above the Plugin ID field
+4. Add the plugin ID: `Tdarr_Plugin_recox_MP4_Faststart`
+5. Configure your preferred options
+6. Save and sync plugins
+
+## How It Works
+
+### Detection Process
+1. **Container Check**: Validates file is MP4/MOV format
+2. **Size Validation**: Optionally skips very large files
+3. **FFmpeg Trace**: Analyzes atom structure using `ffmpeg -v trace`
+4. **Position Analysis**: Compares moov and mdat atom positions
+5. **Status Determination**: Determines if faststart processing is needed
+
+### Processing Workflow
+1. **Stream Mapping**: Maps all existing streams (`-map 0`)
+2. **Copy Mode**: Copies without re-encoding (`-c copy`)  
+3. **Faststart Flag**: Applies `-movflags +faststart`
+4. **Timestamp Fix**: Uses `-avoid_negative_ts make_zero`
+5. **Optimization**: Moves metadata to file beginning
+
+## Technical Details
+
+### Faststart Detection Logic
+```
+• Faststart Enabled:  moov atom position < mdat atom position
+• Faststart Needed:   mdat atom position < moov atom position  
+• Processing Required: Only when faststart needed or force enabled
+```
+
+### FFmpeg Command Generated
+```bash
+ffmpeg -i input.mp4 -map 0 -c copy -movflags +faststart -avoid_negative_ts make_zero output.mp4
+```
+
+## Companion to Language Plugin
+
+This faststart plugin is designed to work perfectly with `Tdarr_Plugin_recox_Keep_Native_Lang_Plus_User_Langs`:
+
+### Recommended Processing Order
+1. **First**: Language plugin (removes unwanted audio tracks)
+2. **Second**: Faststart plugin (optimizes for web streaming)
+
+### Combined Benefits
+- Clean audio tracks with only desired languages
+- Optimized file structure for instant web playback
+- Comprehensive media optimization pipeline
+- Intelligent processing (skips unnecessary work)
+
+## Requirements
+
+- **FFmpeg**: Must be available in system PATH or Tdarr environment
+- **Container Support**: Only processes MP4/MOV files
+- **System Resources**: Temporary disk space equal to file size during processing
+
+## Version History
+
+- **v1.0**: Initial release with intelligent faststart detection and processing
