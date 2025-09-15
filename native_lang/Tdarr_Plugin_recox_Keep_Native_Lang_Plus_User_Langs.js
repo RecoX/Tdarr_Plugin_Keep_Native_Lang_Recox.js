@@ -201,6 +201,7 @@ const processStreams = (result, file, userLangs, isSonarr, includeCommentary) =>
     remLangs: '',
   };
   let streamIndex = 0;
+  let audioStreamIndex = 0;
 
   // Convert the TMDB language code to ISO-639-2 3-letter format dynamically
   const tmdbLanguageCode = result.original_language;
@@ -208,50 +209,58 @@ const processStreams = (result, file, userLangs, isSonarr, includeCommentary) =>
 
   response.infoLog += `Original language tag: ${convertedLanguageCode}\n`;
 
-  // Initialize tracking: assume we'll keep the native language track
-  // Note: This is optimistic - we'll verify actual matches during stream analysis
-  tracks.keep.push(streamIndex);
-  response.infoLog += `Keeping the original language audio track: ${languages.getName(result.original_language, 'en')}\n`;
-
   // Flag to track if we actually find matching audio streams
   let matchFound = false;
 
   for (const stream of file.ffProbeData.streams) {
     if (stream.codec_type === 'audio') {
       if (!stream.tags) {
-        response.infoLog += `☒No tags found on audio track ${streamIndex}. Removing it.\n`;
-        tracks.remove.push(streamIndex);
-        response.preset += `-map -0:a:${streamIndex} `;
+        response.infoLog += `☒No tags found on audio track ${audioStreamIndex}. Removing it.\n`;
+        tracks.remove.push(audioStreamIndex);
+        response.preset += `-map -0:a:${audioStreamIndex} `;
       } else if (stream.tags.title && isCommentaryTrack(stream.tags.title)) {
         // Remove commentary tracks if includeCommentary is true
         if (includeCommentary) {
           response.infoLog += `☒Removing commentary audio track: ${languages.getName(stream.tags.language, 'en')} (commentary) - ${stream.tags.title}\n`;
-          tracks.remove.push(streamIndex);
-          response.preset += `-map -0:a:${streamIndex} `;
+          tracks.remove.push(audioStreamIndex);
+          response.preset += `-map -0:a:${audioStreamIndex} `;
           tracks.remLangs += `${languages.getName(stream.tags.language, 'en')} (commentary), `;
+        } else {
+          tracks.keep.push(audioStreamIndex);
+          response.infoLog += `☑Keeping commentary audio track: ${languages.getName(stream.tags.language, 'en')} (commentary)\n`;
+          matchFound = true;
         }
       } else if (stream.tags.language) {
         // Check if the language is in the user-defined languages or it's the original language
         const mappedLanguage = isSonarr ? mapSonarrLanguageToTMDB(stream.tags.language) : mapRadarrLanguageToTMDB(stream.tags.language);
         
         if (userLangs.includes(mappedLanguage) || mappedLanguage === convertedLanguageCode) {
-          tracks.keep.push(streamIndex);
+          tracks.keep.push(audioStreamIndex);
           response.infoLog += `☑Keeping audio track with language: ${languages.getName(stream.tags.language, 'en')}\n`;
           matchFound = true; // At least one track matches the specified languages
         } else {
           response.infoLog += `☒Removing audio track with language: ${languages.getName(stream.tags.language, 'en')}\n`;
-          tracks.remove.push(streamIndex);
-          response.preset += `-map -0:a:${streamIndex} `;
+          tracks.remove.push(audioStreamIndex);
+          response.preset += `-map -0:a:${audioStreamIndex} `;
           tracks.remLangs += `${languages.getName(stream.tags.language, 'en')}, `;
         }
       } else {
-        response.infoLog += `☒No language tag found on audio track ${streamIndex}. Removing it.\n`;
-        tracks.remove.push(streamIndex);
-        response.preset += `-map -0:a:${streamIndex} `;
+        response.infoLog += `☒No language tag found on audio track ${audioStreamIndex}. Removing it.\n`;
+        tracks.remove.push(audioStreamIndex);
+        response.preset += `-map -0:a:${audioStreamIndex} `;
       }
 
-      streamIndex += 1;
+      audioStreamIndex += 1;
     }
+    streamIndex += 1;
+  }
+
+  // Fallback: If no audio tracks match the criteria, keep the first audio track to prevent silent output
+  if (!matchFound && audioStreamIndex > 0) {
+    response.infoLog += `☒No matching language tracks found. Keeping first audio track as fallback.\n`;
+    tracks.keep = [0]; // Keep first audio track
+    tracks.remove = []; // Clear removal list
+    response.preset = response.preset.replace(/-map -0:a:\d+ /g, ''); // Remove all audio mapping commands
   }
 
   // Return tracks object, don't modify global response.preset here to avoid duplication
@@ -490,7 +499,7 @@ const plugin = async (file, librarySettings, inputs, otherArguments) => {
     console.log('User Languages Include Removed Languages:', userLanguages.includes(tracks.remLangs));
 
     // Check if no tracks match original or user-specified languages
-    const noMatchingTracks = tracks.keep.length === 0 && !originalLanguageIncluded && !userLanguages.includes(tracks.remLangs);
+    const noMatchingTracks = tracks.keep.length === 0;
 
     console.log('No Matching Tracks:', noMatchingTracks);
 
@@ -552,8 +561,8 @@ const plugin = async (file, librarySettings, inputs, otherArguments) => {
         response.infoLog += '☒Cancelling plugin otherwise all audio tracks would be removed. \n';
       }
     } else {
-      // Check if we're in the "keep first track" scenario
-      if (tracks.keep.length === 1 && tracks.keep[0] === 0) {
+      // Check if we're in the "keep first track" scenario (fallback safety mechanism was triggered)
+      if (tracks.keep.length === 1 && tracks.keep[0] === 0 && tracks.remove.length === 0) {
         response.infoLog += '☑Keeping first audio track as fallback. \n';
         response.processFile = false; // No processing needed, keeping original
       } else {
