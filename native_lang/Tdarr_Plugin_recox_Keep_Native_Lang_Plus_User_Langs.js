@@ -254,29 +254,7 @@ const processStreams = (result, file, userLangs, isSonarr, includeCommentary) =>
     }
   }
 
-  response.preset += ' -c copy -max_muxing_queue_size 9999';
-
-  // If none of the audio tracks match the specified languages, stop the plugin
-  if (!matchFound) {
-    // Check if this is fallback mode (original language is 'en' and no English found)
-    if (result.original_language === 'en' && !matchFound) {
-      // Fallback: keep only the first audio track
-      response.infoLog += '☒No English track found in fallback mode. Keeping first audio track only. \n';
-      tracks.keep = [0]; // Keep only the first audio track
-      tracks.remove = []; // Clear all removals
-      
-      // Reset the preset to not remove anything
-      response.preset = ', -map 0 -c copy -max_muxing_queue_size 9999';
-      response.processFile = false; // Don't process since we're keeping everything
-    } else {
-      response.infoLog += '☒Cancelling plugin because none of the audio tracks match the specified languages. \n';
-      response.processFile = false;
-
-      // Clear the removal tracks to prevent further deletion
-      tracks.remove = [];
-    }
-  }
-
+  // Return tracks object, don't modify global response.preset here to avoid duplication
   return tracks;
 };
 
@@ -469,16 +447,22 @@ const plugin = async (file, librarySettings, inputs, otherArguments) => {
                      -2,
                   )}. \n`;
                   response.processFile = true;
+                  // Build the final FFmpeg preset for Sonarr processing
+                  response.preset += ' -c copy -max_muxing_queue_size 9999';
                   response.infoLog += '\n';
+                  return response; // Exit early, we've processed everything needed
                 } else {
                   response.infoLog
                     += '☒Cancelling plugin otherwise all audio tracks would be removed. \n';
+                  return response; // Exit early
                 }
               } else {
                 response.infoLog += '☒No audio tracks to be removed. \n';
+                return response; // Exit early
               }
             } else {
               response.infoLog += "☒Couldn't find the IMDb id of this file. Skipping. \n";
+              return response; // Exit early
             }
           }
         }
@@ -530,6 +514,11 @@ const plugin = async (file, librarySettings, inputs, otherArguments) => {
     } else {
       response.infoLog += '☒No audio tracks to be removed. \n';
     }
+
+    // Build the final FFmpeg preset only once, after all processing is determined
+    if (response.processFile) {
+      response.preset += ' -c copy -max_muxing_queue_size 9999';
+    }
   } else {
     // Fallback: keep only English when no metadata is available
     response.infoLog += "☒No metadata found. Falling back to keeping English only.\n";
@@ -570,6 +559,11 @@ const plugin = async (file, librarySettings, inputs, otherArguments) => {
       } else {
         response.infoLog += '☒No audio tracks to be removed in fallback mode. \n';
       }
+    }
+
+    // Build the final FFmpeg preset for fallback mode
+    if (response.processFile) {
+      response.preset += ' -c copy -max_muxing_queue_size 9999';
     }
   }
 
