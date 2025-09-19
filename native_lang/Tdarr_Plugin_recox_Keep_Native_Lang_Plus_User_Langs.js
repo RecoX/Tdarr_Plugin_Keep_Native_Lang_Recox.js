@@ -255,7 +255,7 @@ const processStreams = (result, file, userLangs, isSonarr, includeCommentary) =>
   }
 
   // Fallback: If no audio tracks match the criteria, keep the first audio track to prevent silent output
-  if (!matchFound && audioStreamIndex > 0) {
+  if (!matchFound && audioStreamIndex > 0 && tracks.keep.length === 0) {
     response.infoLog += `☒No matching language tracks found. Keeping first audio track as fallback.\n`;
     tracks.keep = [0]; // Keep first audio track
     tracks.remove = []; // Clear removal list
