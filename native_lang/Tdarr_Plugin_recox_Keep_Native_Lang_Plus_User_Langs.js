@@ -239,7 +239,6 @@ const processStreams = (result, file, userLangs, isSonarr, includeCommentary) =>
           response.infoLog += `☑Keeping audio track with language: ${languages.getName(stream.tags.language, 'en')}\n`;
           matchFound = true; // At least one track matches the specified languages
         } else {
-          response.infoLog += `☒Removing audio track with language: ${languages.getName(stream.tags.language, 'en')}\n`;
           tracks.remove.push(audioStreamIndex);
           response.preset += `-map -0:a:${audioStreamIndex} `;
           tracks.remLangs += `${languages.getName(stream.tags.language, 'en')}, `;
